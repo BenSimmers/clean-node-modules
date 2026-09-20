@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION="1.0.0"
+
+ROOT="${CLEAN_NODE_MODULES_ROOT:-$PWD}"
+DELETE=false
+ASSUME_YES=false
+OLDER_THAN=""
+MAXDEPTH=8
+
+usage() {
+  cat <<'USAGE'
+Usage: clean-node-modules [options] [directory]
+Options:
+  -d, --delete            actually remove the directories found
+  -y, --yes               skip the confirmation prompt (implies nothing on its own)
+  -n, --dry-run           report only; this is the default
+  -o, --older-than DAYS   only match directories untouched for DAYS+ days
+  -m, --max-depth N       how deep to search (default: 8)
+  -h, --help              show this help
+  -V, --version           show the version
+USAGE
+}
+
+die() { printf '%s: %s\n' "${0##*/}" "$1" >&2; exit "${2:-1}"; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -d|--delete)     DELETE=true; shift ;;
+    -y|--yes)        ASSUME_YES=true; shift ;;
+    -n|--dry-run)    DELETE=false; shift ;;
+    -o|--older-than) [[ $# -ge 2 ]] || die "--older-than needs a number of days"
+                     OLDER_THAN="$2"; shift 2 ;;
+    -m|--max-depth)  [[ $# -ge 2 ]] || die "--max-depth needs a number"
+                     MAXDEPTH="$2"; shift 2 ;;
+    -h|--help)       usage; exit 0 ;;
+    -V|--version)    echo "clean-node-modules ${VERSION}"; exit 0 ;;
+    --)              shift; [[ $# -gt 0 ]] && ROOT="$1"; break ;;
+    -*)              usage >&2; die "unknown option: $1" ;;
+    *)               ROOT="$1"; shift ;;
+  esac
+done
+
+[[ "$OLDER_THAN" =~ ^[0-9]*$ ]] || die "--older-than must be a whole number of days"
+[[ "$MAXDEPTH"   =~ ^[0-9]+$ ]] || die "--max-depth must be a whole number"
+
+ROOT="${ROOT/#\~/$HOME}"
+[[ -d "$ROOT" ]] || die "not a directory: $ROOT"
+ROOT="$(cd "$ROOT" && pwd -P)"
+
+case "$ROOT" in
+  "$HOME"|/|/Users|/home|/Applications|/System|/Library|/usr|/etc|/var|/opt)
+    die "refusing to scan $ROOT -- pick a narrower directory" ;;
+esac
+
+find_args=(-maxdepth "$MAXDEPTH" -type d -name node_modules -prune)
+[[ -n "$OLDER_THAN" ]] && find_args+=(-mtime "+${OLDER_THAN}")
+
+printf 'scanning %s ...\n' "$ROOT"
+
+dirs=()
+while IFS= read -r -d '' dir; do
+  dirs+=("$dir")
+done < <(find "$ROOT" "${find_args[@]}" -print0 2>/dev/null | LC_ALL=C sort -z)
+
+if [[ ${#dirs[@]} -eq 0 ]]; then
+  echo "no node_modules directories found."
+  exit 0
+fi
+
+total_kb=0
+for dir in "${dirs[@]}"; do
+  kb=$(du -sk "$dir" 2>/dev/null | awk 'NR==1{print $1}') || kb=0
+  total_kb=$(( total_kb + ${kb:-0} ))
+  size=$(du -sh "$dir" 2>/dev/null | awk 'NR==1{print $1}')
+  rel="${dir#"$ROOT"/}"
+  printf '  %8s  %s\n' "${size:-?}" "$rel"
+done
+
+human_total=$(awk -v kb="$total_kb" 'BEGIN{
+  split("KB MB GB TB", u, " "); i = 1
+  while (kb >= 1024 && i < 4) { kb /= 1024; i++ }
+  printf "%.1f %s", kb, u[i]
+}')
+
+printf '\n%d %s, %s total\n' "${#dirs[@]}" \
+  "$([[ ${#dirs[@]} -eq 1 ]] && echo directory || echo directories)" "$human_total"
+
+if [[ "$DELETE" != true ]]; then
+  printf '\ndry run -- nothing deleted. re-run with --delete to remove them.\n'
+  exit 0
+fi
+
+if [[ "$ASSUME_YES" != true ]]; then
+  if [[ ! -t 0 ]]; then
+    die "refusing to delete without a terminal to confirm at; pass --yes if you mean it"
+  fi
+  printf '\n'
+  read -r -p "delete all ${#dirs[@]} directories? [y/N] " reply
+  [[ "$reply" =~ ^[Yy]([Ee][Ss])?$ ]] || { echo "aborted."; exit 0; }
+fi
+
+printf '\n'
+failed=0
+for dir in "${dirs[@]}"; do
+  printf 'removing %s ... ' "${dir#"$ROOT"/}"
+  if rm -rf -- "$dir"; then echo "ok"; else echo "FAILED"; failed=$(( failed + 1 )); fi
+done
+
+if [[ $failed -gt 0 ]]; then
+  printf '\n%d of %d could not be removed.\n' "$failed" "${#dirs[@]}"
+  exit 2
+fi
+
+printf '\nfreed %s.\n' "$human_total"
