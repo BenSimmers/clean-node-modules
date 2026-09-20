@@ -32,26 +32,27 @@ echo
 # --- dry run ---------------------------------------------------------------
 root="$(fixture)"
 out="$("$SCRIPT" "$root" 2>&1)"
-[[ "$out" == *"dry run"* ]] && pass "dry run says so" || fail "dry run says so" "$out"
-[[ -d "$root/app-a/node_modules" ]] && pass "dry run deletes nothing" \
-  || fail "dry run deletes nothing" "app-a/node_modules is gone"
+if [[ "$out" == *"dry run"* ]]; then pass "dry run says so"
+else fail "dry run says so" "$out"; fi
+if [[ -d "$root/app-a/node_modules" ]]; then pass "dry run deletes nothing"
+else fail "dry run deletes nothing" "app-a/node_modules is gone"; fi
 check "dry run counts top-level matches" "count line" \
   "$(grep -cE '^  +[0-9.]+[BKMGT]?i?B?  ' <<<"$out" || true)" "2"
 
 # --- prune: nested node_modules not listed separately ----------------------
-[[ "$out" != *"some-pkg"* ]] && pass "nested node_modules pruned from output" \
-  || fail "nested node_modules pruned from output" "$out"
+if [[ "$out" != *"some-pkg"* ]]; then pass "nested node_modules pruned from output"
+else fail "nested node_modules pruned from output" "$out"; fi
 rm -rf "$root"
 
 # --- delete with --yes -----------------------------------------------------
 root="$(fixture)"
 "$SCRIPT" --delete --yes "$root" >/dev/null 2>&1
-[[ ! -d "$root/app-a/node_modules" ]] && pass "--delete removes node_modules" \
-  || fail "--delete removes node_modules" "still present"
-[[ ! -d "$root/app-b/nested/deep/node_modules" ]] && pass "--delete recurses into subdirs" \
-  || fail "--delete recurses into subdirs" "still present"
-[[ -f "$root/app-c/src/keep.js" ]] && pass "--delete leaves other files alone" \
-  || fail "--delete leaves other files alone" "keep.js was removed"
+if [[ ! -d "$root/app-a/node_modules" ]]; then pass "--delete removes node_modules"
+else fail "--delete removes node_modules" "still present"; fi
+if [[ ! -d "$root/app-b/nested/deep/node_modules" ]]; then pass "--delete recurses into subdirs"
+else fail "--delete recurses into subdirs" "still present"; fi
+if [[ -f "$root/app-c/src/keep.js" ]]; then pass "--delete leaves other files alone"
+else fail "--delete leaves other files alone" "keep.js was removed"; fi
 rm -rf "$root"
 
 # --- delete without a tty and without --yes must refuse --------------------
@@ -59,8 +60,8 @@ root="$(fixture)"
 "$SCRIPT" --delete "$root" </dev/null >/dev/null 2>&1
 rc=$?
 check "--delete without tty or --yes exits 1" "exit code" "$rc" "1"
-[[ -d "$root/app-a/node_modules" ]] && pass "refused delete changed nothing" \
-  || fail "refused delete changed nothing" "directory was removed anyway"
+if [[ -d "$root/app-a/node_modules" ]]; then pass "refused delete changed nothing"
+else fail "refused delete changed nothing" "directory was removed anyway"; fi
 rm -rf "$root"
 
 # --- safety guards ---------------------------------------------------------
@@ -73,22 +74,23 @@ rm -rf "$root"
 # --- max depth -------------------------------------------------------------
 root="$(fixture)"
 out="$("$SCRIPT" --max-depth 2 "$root" 2>&1)"
-[[ "$out" == *"app-a/node_modules"* && "$out" != *"deep/node_modules"* ]] \
-  && pass "--max-depth limits the walk" || fail "--max-depth limits the walk" "$out"
+if [[ "$out" == *"app-a/node_modules"* && "$out" != *"deep/node_modules"* ]]; then
+  pass "--max-depth limits the walk"
+else fail "--max-depth limits the walk" "$out"; fi
 rm -rf "$root"
 
 # --- empty tree ------------------------------------------------------------
 root="$(mktemp -d)"; mkdir -p "$root/plain"
 out="$("$SCRIPT" "$root" 2>&1)"; rc=$?
-[[ "$out" == *"no node_modules"* && $rc -eq 0 ]] && pass "empty tree exits 0 cleanly" \
-  || fail "empty tree exits 0 cleanly" "$out"
+if [[ "$out" == *"no node_modules"* && $rc -eq 0 ]]; then pass "empty tree exits 0 cleanly"
+else fail "empty tree exits 0 cleanly" "$out"; fi
 rm -rf "$root"
 
 # --- paths with spaces -----------------------------------------------------
 root="$(mktemp -d)"; mkdir -p "$root/my project/node_modules"; echo x > "$root/my project/node_modules/a.js"
 "$SCRIPT" --delete --yes "$root" >/dev/null 2>&1
-[[ ! -d "$root/my project/node_modules" ]] && pass "handles paths with spaces" \
-  || fail "handles paths with spaces" "still present"
+if [[ ! -d "$root/my project/node_modules" ]]; then pass "handles paths with spaces"
+else fail "handles paths with spaces" "still present"; fi
 rm -rf "$root"
 
 # --- misc ------------------------------------------------------------------

@@ -61,6 +61,9 @@ printf 'installed %s\n' "$("$BINDIR/$BIN" --version) -> $BINDIR/$BIN"
 
 case ":$PATH:" in
   *":$BINDIR:"*) ;;
-  *) printf '\n%s is not on your PATH. Add it with:\n\n  export PATH="%s:$PATH"\n' \
-       "$BINDIR" "$BINDIR" ;;
+  *)
+    # $PATH below is literal text for the user to copy, not an expansion.
+    # shellcheck disable=SC2016
+    printf '\n%s is not on your PATH. Add it with:\n\n  export PATH="%s:$PATH"\n' \
+      "$BINDIR" "$BINDIR" ;;
 esac
